@@ -313,6 +313,26 @@ fn git(dir: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// Resolve a repo\'s default branch (e.g. `main`) via gh, for base-branch checks.
+fn default_branch(repo_slug: &str, dir: &str) -> Result<String, String> {
+    let name = run_gh(
+        &[
+            "repo",
+            "view",
+            repo_slug,
+            "--json",
+            "defaultBranchRef",
+            "--jq",
+            ".defaultBranchRef.name",
+        ],
+        Some(dir),
+    )?;
+    if name.is_empty() {
+        return Err("gh returned an empty default branch".into());
+    }
+    Ok(name)
+}
+
 /// Parse `owner`/`repo` from a GitHub remote URL (https or ssh forms).
 fn parse_owner_repo(remote: &str) -> Option<(String, String)> {
     let r = remote.trim();
@@ -447,6 +467,36 @@ pub fn github_push_card(input: PushInput) -> Result<PushResult, String> {
         }
     }
 
+    // 3.5 Guard against an empty PR. When the run produced no file changes,
+    // nothing is committed and the fresh branch matches its base, so
+    // `gh pr create` fails with a confusing "No commits between …" error.
+    // Detect that here and explain what to do instead.
+    let base = match input
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
+        Some(b) => b.to_string(),
+        None => default_branch(&repo_slug, &dir).unwrap_or_else(|_| "main".to_string()),
+    };
+    if branch != base {
+        for base_ref in [format!("origin/{base}"), base.clone()] {
+            match git(&dir, &["rev-list", "--count", &format!("{base_ref}..HEAD")]) {
+                Ok(count) if count.trim() == "0" => {
+                    return Err(format!(
+                        "Nothing to push: the run made no new commits in {dir}, so branch \"{branch}\" \
+                         matches \"{base}\". Make sure the agent produced file changes before pushing to GitHub."
+                    ));
+                }
+                // Found a usable base ref (and it has diverged) — stop probing.
+                Ok(_) => break,
+                // Base ref not present locally; try the next candidate.
+                Err(_) => continue,
+            }
+        }
+    }
+
     // 4. Push using an authenticated https URL (token not persisted in config).
     let push_url = format!("https://x-access-token:{token}@github.com/{owner}/{repo}.git");
     let refspec = format!("HEAD:refs/heads/{branch}");
@@ -530,7 +580,16 @@ pub fn github_push_card(input: PushInput) -> Result<PushResult, String> {
                 committed,
             })
         }
-        Err(e) => Err(sanitize_token(&e, &token)),
+        Err(e) => {
+            let sanitized = sanitize_token(&e, &token);
+            if sanitized.to_lowercase().contains("no commits between") {
+                return Err(format!(
+                    "Nothing to push: branch \"{branch}\" has no commits that \"{base}\" doesn\'t \
+                     already have. Make sure the agent produced file changes before pushing to GitHub."
+                ));
+            }
+            Err(sanitized)
+        }
     }
 }
 
