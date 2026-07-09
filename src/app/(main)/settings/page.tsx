@@ -29,6 +29,7 @@ import { AgentOptions } from "@/components/agents/agent-options";
 import { AgentInstallGate, AgentStatusBadge, useBinaryStatus } from "@/components/agents/binary-status";
 import { WorkingDirField } from "@/components/agents/working-dir-field";
 import { AppUpdatePanel } from "@/components/settings/app-update-panel";
+import { GithubPanel } from "@/components/settings/github-panel";
 import { LocalModelsPanel } from "@/components/settings/local-models-panel";
 // User connection disabled — hub status, remote access and cloud sync are off.
 // import { HubStatusCard } from "@/components/settings/hub-status-card";
@@ -672,6 +673,7 @@ export default function SettingsPage() {
           <TabsTrigger value="preferences">{t("tabs.preferences")}</TabsTrigger>
           <TabsTrigger value="agents">{t("tabs.agents")}</TabsTrigger>
           <TabsTrigger value="localModels">{t("tabs.localModels")}</TabsTrigger>
+          <TabsTrigger value="github">{t("tabs.github")}</TabsTrigger>
           {/* Integrations, Sync and Plugins are parked for now.
           <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>
           <TabsTrigger value="sync">{t("tabs.sync")}</TabsTrigger>
@@ -864,6 +866,10 @@ export default function SettingsPage() {
 
         <TabsContent value="localModels" className="space-y-6">
           <LocalModelsPanel />
+        </TabsContent>
+
+        <TabsContent value="github" className="space-y-6">
+          <GithubPanel />
         </TabsContent>
 
         {/* Integrations, Sync and Plugins are parked for now.

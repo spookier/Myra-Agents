@@ -6,6 +6,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { ClipboardCheckIcon, MessageSquareIcon, PencilIcon, ScrollTextIcon, TrashIcon, ZapIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { GithubPushAction } from "@/components/kanban/github-push-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { MyraThinking } from "@/components/ui/myra-thinking";
 import { useConnections } from "@/hooks/use-connections";
 import { parseGlobalId } from "@/lib/aggregate/global-id";
 import { tagClassName } from "@/lib/kanban-tags";
+import { isTauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { KanbanCard } from "@/types/kanban";
 import { COLUMN_CONFIG } from "@/types/kanban";
@@ -92,6 +94,11 @@ export function KanbanCardComponent({
 
   // Active/done cards open the agent conversation on body click; others edit.
   const handleBodyClick = onOpenConversation && CONVERSATION_STATUSES.has(card.status) ? onOpenConversation : onEdit;
+
+  // Finished-run cards with a local working dir can push their result to GitHub
+  // (open/update a PR). Desktop-only (needs the Tauri shell); placement below
+  // scopes it to the awaiting_review action block.
+  const canPushToGithub = isTauri() && Boolean(card.workingDir);
 
   return (
     <Card
@@ -232,6 +239,19 @@ export function KanbanCardComponent({
               <ClipboardCheckIcon className="size-3" />
               {t("review")}
             </Button>
+            {canPushToGithub && card.workingDir && (
+              // biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops drag/body-click bubbling
+              // biome-ignore lint/a11y/useKeyWithClickEvents: wrapper is not interactive; it only stops event bubbling
+              <div onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                <GithubPushAction
+                  workingDir={card.workingDir}
+                  defaultTitle={card.title}
+                  defaultBody={card.agentResult ?? card.description ?? ""}
+                  buttonSize="xs"
+                  buttonClassName="w-full"
+                />
+              </div>
+            )}
           </div>
         )}
 

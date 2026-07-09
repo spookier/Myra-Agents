@@ -1,3 +1,4 @@
+mod github;
 mod tray;
 
 use std::io::{Read, Write};
@@ -97,20 +98,28 @@ fn health_ok(port: u16) -> bool {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-    let req = format!("GET /healthz HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let req =
+        format!("GET /healthz HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     if stream.write_all(req.as_bytes()).is_err() {
         return false;
     }
     let mut buf = String::new();
     let _ = stream.read_to_string(&mut buf);
-    buf.lines().next().map(|l| l.contains("200")).unwrap_or(false)
+    buf.lines()
+        .next()
+        .map(|l| l.contains("200"))
+        .unwrap_or(false)
 }
 
 /// The stable path the self-installed copy of the sidecar lives at, so the OS
 /// service points somewhere that survives app moves/updates.
 fn stable_bin_path(app: &AppHandle) -> Result<PathBuf, String> {
     let home = app.path().home_dir().map_err(|e| e.to_string())?;
-    let name = if cfg!(windows) { "myra-server.exe" } else { "myra-server" };
+    let name = if cfg!(windows) {
+        "myra-server.exe"
+    } else {
+        "myra-server"
+    };
     Ok(home.join(".myra-agents").join("bin").join(name))
 }
 
@@ -122,7 +131,10 @@ fn version_stamp_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn installed_version(app: &AppHandle) -> Option<String> {
     let p = version_stamp_path(app).ok()?;
-    std::fs::read_to_string(p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read_to_string(p)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn write_version_stamp(app: &AppHandle) {
@@ -145,7 +157,9 @@ fn install_is_stale(app: &AppHandle) -> bool {
 }
 
 fn is_demo() -> bool {
-    std::env::var("DEMO").map(|v| v == "1" || v == "true").unwrap_or(false)
+    std::env::var("DEMO")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
 }
 
 /// Copy the bundled sidecar to the stable path (overwrite = upgrade), stamp the
@@ -153,7 +167,12 @@ fn is_demo() -> bool {
 /// — reused by first-time setup, the upgrade check, and remote-access enroll.
 async fn ensure_local_service(app: &AppHandle) -> Result<(), String> {
     let dest = stable_bin_path(app)?;
-    run_sidecar(app, vec!["install-self".into(), dest.to_string_lossy().to_string()], vec![]).await?;
+    run_sidecar(
+        app,
+        vec!["install-self".into(), dest.to_string_lossy().to_string()],
+        vec![],
+    )
+    .await?;
     write_version_stamp(app);
     let port = SERVICE_PORT.to_string();
     let myra_dir = std::env::var("MYRA_DIR").ok();
@@ -198,7 +217,9 @@ fn spawn_upgrade_check(app: AppHandle) {
         if !install_is_stale(&app) {
             return;
         }
-        let Ok(dest) = stable_bin_path(&app) else { return };
+        let Ok(dest) = stable_bin_path(&app) else {
+            return;
+        };
         if !dest.exists() {
             return;
         }
@@ -323,8 +344,16 @@ fn start_local_backend(app: &AppHandle) -> u16 {
 /// Run the bundled sidecar binary to completion, returning its stdout. Used for
 /// short subcommands (`status`, `install-self`) where we want the output, not a
 /// long-lived child.
-async fn run_sidecar(app: &AppHandle, args: Vec<String>, envs: Vec<(String, String)>) -> Result<String, String> {
-    let mut command = app.shell().sidecar("myra-server").map_err(|e| e.to_string())?.args(args);
+async fn run_sidecar(
+    app: &AppHandle,
+    args: Vec<String>,
+    envs: Vec<(String, String)>,
+) -> Result<String, String> {
+    let mut command = app
+        .shell()
+        .sidecar("myra-server")
+        .map_err(|e| e.to_string())?
+        .args(args);
     for (k, v) in envs {
         command = command.env(k, v);
     }
@@ -338,7 +367,11 @@ async fn run_sidecar(app: &AppHandle, args: Vec<String>, envs: Vec<(String, Stri
 /// Run the stable self-installed copy of the sidecar to completion (blocking).
 /// Used for enroll/install-service/unenroll/uninstall-service so the service
 /// definition bakes in the stable binary path.
-fn run_binary(path: &std::path::Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, String> {
+fn run_binary(
+    path: &std::path::Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
     let mut cmd = StdCommand::new(path);
     cmd.args(args);
     for (k, v) in envs {
@@ -508,9 +541,19 @@ struct RemoteStatus {
 /// calls `refresh_local_backend` to adopt it. Local-direct access keeps working
 /// with or without this.
 #[tauri::command]
-async fn enable_remote_access(app: AppHandle, hub_url: String, code: String, label: String) -> Result<(), String> {
+async fn enable_remote_access(
+    app: AppHandle,
+    hub_url: String,
+    code: String,
+    label: String,
+) -> Result<(), String> {
     let dest = stable_bin_path(&app)?;
-    run_sidecar(&app, vec!["install-self".into(), dest.to_string_lossy().to_string()], vec![]).await?;
+    run_sidecar(
+        &app,
+        vec!["install-self".into(), dest.to_string_lossy().to_string()],
+        vec![],
+    )
+    .await?;
     write_version_stamp(&app);
     let port = SERVICE_PORT.to_string();
     let myra_dir = std::env::var("MYRA_DIR").ok();
@@ -519,7 +562,10 @@ async fn enable_remote_access(app: AppHandle, hub_url: String, code: String, lab
         run_binary(
             &dest,
             &["enroll", &code],
-            &[("MYRA_HUB_URL", hub_url.as_str()), ("MYRA_INSTANCE_LABEL", label.as_str())],
+            &[
+                ("MYRA_HUB_URL", hub_url.as_str()),
+                ("MYRA_INSTANCE_LABEL", label.as_str()),
+            ],
         )?;
         let mut envs: Vec<(&str, &str)> = vec![("PORT", port.as_str())];
         if let Some(d) = myra_dir.as_deref() {
@@ -559,20 +605,29 @@ struct LocalServerStatus {
 async fn local_server_status(app: AppHandle) -> Result<LocalServerStatus, String> {
     let installed = stable_bin_path(&app).map(|p| p.exists()).unwrap_or(false);
     let version = installed_version(&app);
-    let port = app.try_state::<SidecarState>().map(|s| *s.port.lock().unwrap()).unwrap_or(SERVICE_PORT);
+    let port = app
+        .try_state::<SidecarState>()
+        .map(|s| *s.port.lock().unwrap())
+        .unwrap_or(SERVICE_PORT);
     let running = health_ok(port) || health_ok(SERVICE_PORT);
 
     // Enrollment comes from the sidecar's own `status` (reads the credential file).
-    let (enrolled, hub_url, label) = match run_sidecar(&app, vec!["status".into(), "--json".into()], vec![]).await {
-        Ok(out) => {
-            let line = out.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
-            match serde_json::from_str::<RemoteStatus>(line) {
-                Ok(s) => (s.enrolled, s.hub_url, s.label),
-                Err(_) => (false, None, None),
+    let (enrolled, hub_url, label) =
+        match run_sidecar(&app, vec!["status".into(), "--json".into()], vec![]).await {
+            Ok(out) => {
+                let line = out
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .trim();
+                match serde_json::from_str::<RemoteStatus>(line) {
+                    Ok(s) => (s.enrolled, s.hub_url, s.label),
+                    Err(_) => (false, None, None),
+                }
             }
-        }
-        Err(_) => (false, None, None),
-    };
+            Err(_) => (false, None, None),
+        };
 
     Ok(LocalServerStatus {
         installed,
@@ -653,7 +708,12 @@ async fn disable_remote_access(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn remote_access_status(app: AppHandle) -> Result<RemoteStatus, String> {
     let out = run_sidecar(&app, vec!["status".into(), "--json".into()], vec![]).await?;
-    let line = out.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    let line = out
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim();
     serde_json::from_str(line).map_err(|e| format!("parse status: {e} (output: {out})"))
 }
 
@@ -663,7 +723,9 @@ async fn remote_access_status(app: AppHandle) -> Result<RemoteStatus, String> {
 #[tauri::command]
 async fn start_login(app: AppHandle) -> Result<(), String> {
     let url = format!("{}/auth/desktop/", web_app_url().trim_end_matches('/'));
-    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// Drain any auth code buffered before the frontend's deep-link listener mounted.
@@ -863,6 +925,10 @@ pub fn run() {
             start_login,
             take_pending_auth_code,
             open_devtools,
+            github::github_auth_login,
+            github::github_auth_status,
+            github::github_auth_logout,
+            github::github_push_card,
             hide_tray_popover,
             open_main,
             quit_app
