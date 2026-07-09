@@ -12,8 +12,10 @@ import { useState } from "react";
 import { CheckCircle2Icon, CheckIcon, LightbulbIcon, RotateCcwIcon, SendIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { GithubPushAction } from "@/components/kanban/github-push-action";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { isTauri } from "@/lib/tauri";
 import type { KanbanStatus } from "@/types/kanban";
 
 interface Props {
@@ -29,6 +31,13 @@ interface Props {
    * Omit to hide (no source patrol, or no change was requested).
    */
   onSuggestPatrol?: () => void;
+  /**
+   * Card working directory. When set (and running under Tauri), the composer
+   * shows a "Push to GitHub" action for awaiting-review and done runs.
+   */
+  pushWorkingDir?: string;
+  pushTitle?: string;
+  pushBody?: string;
   /** Reply on a finished (done) run: relaunches the agent with the message. */
   onFollowUp: (note: string) => Promise<void>;
 }
@@ -42,6 +51,9 @@ export function ReviewComposer({
   onReopen,
   onSuggestPatrol,
   onFollowUp,
+  pushWorkingDir,
+  pushTitle,
+  pushBody,
 }: Props) {
   const t = useTranslations("logs.conversation.review");
   const [text, setText] = useState("");
@@ -57,6 +69,18 @@ export function ReviewComposer({
     }
   };
 
+  const canPush = isTauri() && Boolean(pushWorkingDir);
+  const pushAction =
+    canPush && pushWorkingDir ? (
+      <GithubPushAction
+        workingDir={pushWorkingDir}
+        defaultTitle={pushTitle ?? ""}
+        defaultBody={pushBody ?? ""}
+        buttonVariant="outline"
+        buttonSize="sm"
+      />
+    ) : null;
+
   // Approved/done run: keep a permanent way to reverse the decision, plus a
   // follow-up reply box so the conversation can always be picked back up.
   if (status === "done") {
@@ -66,6 +90,7 @@ export function ReviewComposer({
           <CheckCircle2Icon className="size-4 text-green-600 dark:text-green-400" />
           <span className="text-muted-foreground text-sm">{t("approvedState")}</span>
           <div className="ml-auto flex items-center gap-2">
+            {pushAction}
             {onSuggestPatrol && (
               <Button
                 type="button"
@@ -134,6 +159,7 @@ export function ReviewComposer({
       <div className="mt-2 flex justify-end gap-2">
         {isReview ? (
           <>
+            {pushAction}
             <Button
               type="button"
               variant="secondary"

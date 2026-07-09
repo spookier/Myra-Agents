@@ -405,6 +405,9 @@ function LogsPageInner() {
         <ReviewComposer
           status={liveCard.status}
           question={liveCard.agentQuestion}
+          pushWorkingDir={liveCard.workingDir}
+          pushTitle={liveCard.title}
+          pushBody={liveCard.agentResult ?? liveCard.description ?? ""}
           onApprove={async () => {
             await moveCard(liveCard.id, "done");
             toast.success(t("conversation.review.approved"));

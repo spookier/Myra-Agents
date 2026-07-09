@@ -346,6 +346,9 @@ function AgentSessionScreen() {
         <ReviewComposer
           status={card.status}
           question={card.agentQuestion}
+          pushWorkingDir={card.workingDir}
+          pushTitle={card.title}
+          pushBody={card.agentResult ?? card.description ?? ""}
           onApprove={async () => {
             await moveCard(card.id, "done");
             toast.success(t("approved"));
