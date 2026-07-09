@@ -104,9 +104,6 @@ function LogsPageInner() {
   // `agent-log-appended` (board store `logs`) and are appended past the fetch
   // baseline so the conversation grows live without a manual reload.
   const liveLogs = useBoardStore((s) => s.logs);
-  const liveLogsRef = useRef(liveLogs);
-  liveLogsRef.current = liveLogs;
-  const logBaselineRef = useRef(0);
   const selCardId = selectedRun?.card.id;
 
   // Tell the backend to stream this card's run log while the detail is open —
@@ -128,14 +125,11 @@ function LogsPageInner() {
 
   // Always keep the streamed tail merged onto the snapshot (not just while
   // running) — otherwise the live lines would vanish the instant the run ends,
-  // falling back to the partial open-time snapshot. By construction the tail is
-  // the lines *after* the fetch baseline, so there's no overlap with logContent.
+  // falling back to the partial open-time snapshot. The live watch can replay
+  // the whole log from the start after setLogWatch, so mergeStreamedLog dedupes
+  // any overlap instead of blindly concatenating (which doubled every line).
   const liveLines = selCardId ? (liveLogs.get(selCardId) ?? []) : [];
-  const liveTail = liveLines.slice(logBaselineRef.current).join("\n");
-  const effectiveLog = useMemo(() => {
-    if (!liveTail) return logContent;
-    return [logContent ?? "", liveTail].filter(Boolean).join("\n");
-  }, [logContent, liveTail]);
+  const effectiveLog = useMemo(() => mergeStreamedLog(logContent, liveLines), [logContent, liveLines]);
 
   const transcript = useMemo(
     () => (selectedRun ? parseTranscript(effectiveLog, selectedRun.run) : { entries: [], structured: false }),
@@ -154,7 +148,6 @@ function LogsPageInner() {
     const cardId = selectedRun.card.id;
     void invokeOn<string>(connId, "get_run_log", { cardId: entityId, runId: selectedRun.run.id })
       .then((log) => {
-        logBaselineRef.current = (liveLogsRef.current.get(cardId) ?? []).length;
         setLogContent(log);
       })
       .catch(() => undefined);
@@ -223,8 +216,6 @@ function LogsPageInner() {
       const { connId, entityId } = parseGlobalId(card.id);
       try {
         const log = await invokeOn<string>(connId, "get_run_log", { cardId: entityId, runId: run.id });
-        // Snapshot fetched: only append live lines streamed from here on.
-        logBaselineRef.current = (liveLogsRef.current.get(card.id) ?? []).length;
         setLogContent(log);
       } catch (e) {
         setLogContent(t("details.errorLoading", { error: String(e) }));
@@ -701,6 +692,37 @@ function formatDuration(start: string, end: string): string {
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
+}
+
+/**
+ * Merge a fetched log snapshot with the live-streamed line buffer for the same
+ * run. Both describe the same append-only stream, but the live watch can replay
+ * the log from its start (after setLogWatch), so a naive concatenation doubles
+ * every line already in the snapshot. We dedupe by collapsing the overlap
+ * between the snapshot's tail and the live buffer's head.
+ */
+function mergeStreamedLog(snapshot: string | null, liveLines: string[]): string | null {
+  const snap = snapshot ?? "";
+  const live = liveLines.join("\n");
+  if (!live) return snapshot;
+  if (!snap) return live;
+  // One fully contains the other (e.g. a complete replay): keep the richer copy.
+  if (snap.includes(live)) return snap;
+  if (live.includes(snap)) return live;
+  // Otherwise the live buffer is a newer tail: find the largest k where the
+  // snapshot's last k lines equal the live buffer's first k lines, and append
+  // only the remainder.
+  const snapLines = snap.split("\n");
+  const maxK = Math.min(snapLines.length, liveLines.length);
+  let overlap = 0;
+  for (let k = maxK; k > 0; k--) {
+    if (snapLines.slice(snapLines.length - k).join("\n") === liveLines.slice(0, k).join("\n")) {
+      overlap = k;
+      break;
+    }
+  }
+  const rest = liveLines.slice(overlap).join("\n");
+  return rest ? `${snap}\n${rest}` : snap;
 }
 
 export default function LogsPage() {
